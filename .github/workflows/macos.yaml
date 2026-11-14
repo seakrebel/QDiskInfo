@@ -1,0 +1,99 @@
+name: macOS
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths-ignore:
+      - "**.md"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runs-on: macos-15
+          # Uncomment to also produce an Intel build
+          # - arch: x86_64
+          #   runs-on: macos-15-intel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        run: brew install qt
+
+      - name: Configure
+        run: |
+          QT_PREFIX="$(brew --prefix qt)"
+          if [ -x "$QT_PREFIX/bin/lupdate" ]; then
+            TRANSLATIONS=ON
+          else
+            TRANSLATIONS=OFF
+          fi
+          echo "ENABLE_TRANSLATIONS=$TRANSLATIONS"
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE:STRING=MinSizeRel \
+            -DQT_VERSION_MAJOR=6 \
+            -DENABLE_TRANSLATIONS=$TRANSLATIONS \
+            -DCMAKE_PREFIX_PATH="$QT_PREFIX"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Bundle Qt frameworks
+        run: |
+          QT_PREFIX="$(brew --prefix qt)"
+          "$QT_PREFIX/bin/macdeployqt" build/QDiskInfo.app -always-overwrite
+          codesign --force --deep --sign - build/QDiskInfo.app
+
+      - name: Verify the bundle is self-contained
+        run: |
+          binary="build/QDiskInfo.app/Contents/MacOS/QDiskInfo"
+          if otool -L "$binary" | grep -E "opt/homebrew|/usr/local/opt"; then
+            echo "::error::The bundle still links against a Homebrew Qt, macdeployqt did not finish"
+            exit 1
+          fi
+          ls -1 build/QDiskInfo.app/Contents/Resources/*.icns
+          codesign --verify --deep --strict build/QDiskInfo.app
+
+      - name: Package
+        run: |
+          ditto -c -k --keepParent build/QDiskInfo.app "QDiskInfo-${{ matrix.arch }}.zip"
+          hdiutil create -volname "QDiskInfo" -srcfolder build/QDiskInfo.app \
+            -ov -format UDZO "QDiskInfo-${{ matrix.arch }}.dmg"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: QDiskInfo-macos-${{ matrix.arch }}
+          path: |
+            QDiskInfo-${{ matrix.arch }}.dmg
+            QDiskInfo-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+      - name: Attach artifacts to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" \
+            "QDiskInfo-${{ matrix.arch }}.dmg" "QDiskInfo-${{ matrix.arch }}.zip" --clobber

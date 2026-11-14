@@ -66,6 +66,7 @@ open QDiskInfo.app
 ```sh
 "$(brew --prefix qt)/bin/macdeployqt" QDiskInfo.app -always-overwrite
 ```
+Builds are also produced on GitHub's free runners: the `macOS` workflow builds the bundle on every push and can be started manually from the Actions tab. Pushing a `v*` tag attaches the DMG and the ZIP to the matching release.
 macOS specifics:
 - S.M.A.R.T. data can only be read as root. Instead of polkit (Linux) QDiskInfo asks for administrator rights through the standard macOS authorization dialog, so `smartctl` runs elevated only when data is read or a self-test is started.
 - `smartctl` has to be installed through Homebrew (`/opt/homebrew/sbin` or `/usr/local/sbin`). The application looks there explicitly because a bundle started from Finder does not inherit a shell `PATH`.
