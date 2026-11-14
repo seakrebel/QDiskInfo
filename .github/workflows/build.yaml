@@ -1,12 +1,8 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - "**.md"
-  pull_request:
+  # Automatic Linux/AppImage builds are switched off on purpose: this fork publishes
+  # macOS bundles only (see macos.yaml). Start it from the Actions tab when needed.
   workflow_dispatch:
 
 jobs:
