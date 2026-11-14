@@ -3,13 +3,116 @@
 #include <QAbstractButton>
 #include <QApplication>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <qactiongroup.h>
+
+#include <unistd.h>
+
+namespace {
+
+// Quotes a value so that it survives being passed to a POSIX shell.
+QString shellQuote(const QString &value)
+{
+    QString quoted = value;
+    quoted.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+    quoted.prepend(QLatin1Char('\''));
+    quoted.append(QLatin1Char('\''));
+    return quoted;
+}
+
+utils::CommandResult runProcess(const QString &program, const QStringList &arguments)
+{
+    utils::CommandResult result;
+    QProcess process;
+
+    process.start(program, arguments);
+    if (!process.waitForStarted(-1) || !process.waitForFinished(-1)) {
+        return result;
+    }
+
+    result.launched = true;
+    result.exitCode = process.exitCode();
+    result.standardOutput = QString::fromUtf8(process.readAllStandardOutput());
+    result.standardError = QString::fromUtf8(process.readAllStandardError());
+    return result;
+}
+
+#if defined(Q_OS_MACOS)
+// Runs a program with administrator privileges through AppleScript. The output is
+// redirected to files by the helper script so that binary data and encoding are
+// not mangled by the Apple Event string conversion.
+utils::CommandResult runElevatedProcess(const QString &program, const QStringList &arguments)
+{
+    utils::CommandResult result;
+
+    QTemporaryDir tempDir;
+    if (!tempDir.isValid()) {
+        return result;
+    }
+
+    const QString scriptPath = tempDir.filePath(QStringLiteral("run.sh"));
+    const QString outputPath = tempDir.filePath(QStringLiteral("stdout"));
+    const QString errorPath = tempDir.filePath(QStringLiteral("stderr"));
+
+    QString script = QStringLiteral("#!/bin/sh\nexec ");
+    script += shellQuote(program);
+    for (const QString &argument : arguments) {
+        script += QLatin1Char(' ') + shellQuote(argument);
+    }
+    script += QStringLiteral(" > %1 2> %2\n").arg(shellQuote(outputPath), shellQuote(errorPath));
+
+    QFile scriptFile(scriptPath);
+    if (!scriptFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return result;
+    }
+    scriptFile.write(script.toUtf8());
+    scriptFile.close();
+    scriptFile.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner
+                              | QFileDevice::ReadGroup | QFileDevice::ExeGroup
+                              | QFileDevice::ReadOther | QFileDevice::ExeOther);
+
+    QString appleScriptCommand = QStringLiteral("/bin/sh ") + scriptPath;
+    appleScriptCommand.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    appleScriptCommand.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+
+    // AppleScript aborts events that do not answer within two minutes by default,
+    // while smartctl can take longer on a sleeping or slow drive.
+    const QString appleScript = QStringLiteral("with timeout of 300 seconds\n"
+                                               "do shell script \"%1\" with administrator privileges\n"
+                                               "end timeout").arg(appleScriptCommand);
+
+    // osascript exits with a non-zero status and a "User canceled" message when the
+    // authentication dialog is dismissed or the password is rejected.
+    const utils::CommandResult osascriptResult = runProcess(QStringLiteral("/usr/bin/osascript"),
+                                                            {QStringLiteral("-e"), appleScript});
+
+    result.launched = osascriptResult.launched;
+    result.exitCode = osascriptResult.exitCode;
+    result.standardError = osascriptResult.standardError;
+    result.authorized = osascriptResult.launched && osascriptResult.exitCode == 0;
+
+    QFile outputFile(outputPath);
+    if (outputFile.open(QIODevice::ReadOnly)) {
+        result.standardOutput = QString::fromUtf8(outputFile.readAll());
+    }
+    QFile errorFile(errorPath);
+    if (errorFile.open(QIODevice::ReadOnly)) {
+        result.standardError += QString::fromUtf8(errorFile.readAll());
+    }
+
+    return result;
+}
+#endif
+
+} // namespace
 
 QString utils::clearButtonGroup(QButtonGroup* buttonGroup, QHBoxLayout* horizontalLayout, QSpacerItem* buttonStretch, QMenu* menuDisk)
 {
@@ -42,7 +145,19 @@ QString utils::clearButtonGroup(QButtonGroup* buttonGroup, QHBoxLayout* horizont
 QString utils::getSmartctlPath() {
     QStringList paths = QString::fromLocal8Bit(qgetenv("PATH")).split(QDir::listSeparator(), Qt::SkipEmptyParts);
 
-    paths << "/usr/sbin" << "/usr/local/sbin";
+    paths << QStringLiteral("/usr/local/sbin")
+          << QStringLiteral("/usr/local/bin")
+          << QStringLiteral("/usr/sbin")
+          << QStringLiteral("/sbin");
+
+#if defined(Q_OS_MACOS)
+    // Applications started from Finder get a minimal environment, so the Homebrew
+    // and MacPorts prefixes have to be probed explicitly.
+    paths << QStringLiteral("/opt/homebrew/sbin")
+          << QStringLiteral("/opt/homebrew/bin")
+          << QStringLiteral("/opt/local/sbin")
+          << QStringLiteral("/opt/local/bin");
+#endif
 
     for (const QString &path : std::as_const(paths)) {
         QString absolutePath = QDir(path).absoluteFilePath("smartctl");
@@ -54,61 +169,100 @@ QString utils::getSmartctlPath() {
     return QString();
 }
 
-QString utils::getSmartctlOutput(const QStringList &arguments, bool root, bool initializing)
+utils::CommandResult utils::runCommand(const QString &program, const QStringList &arguments)
 {
-    QProcess process;
-    QString command;
-
-    if (root) {
-        command = "pkexec";
-    } else {
-        command = getSmartctlPath();
-    }
-
-    if (!getSmartctlPath().isEmpty()) {
-        process.start(command, arguments);
-        process.waitForFinished(-1);
-    }
-
-    if (process.exitCode() == 126 || process.exitCode() == 127) {
-        QMessageBox::critical(nullptr, QObject::tr("QDiskInfo Error"), QObject::tr("QDiskInfo needs root access in order to read S.M.A.R.T. data!"));
-        if (initializing) {
-            QTimer::singleShot(0, qApp, &QApplication::quit);
-        }
-        return QString();
-    }
-
-    if (process.isOpen()) {
-        return process.readAllStandardOutput();
-    } else {
-        return QString();
-    }
+    CommandResult result = runProcess(program, arguments);
+    result.authorized = result.launched;
+    return result;
 }
 
+utils::CommandResult utils::runCommandAsRoot(const QString &program, const QStringList &arguments)
+{
+    if (isRunningAsRoot()) {
+        return runCommand(program, arguments);
+    }
+
+#if defined(Q_OS_MACOS)
+    return runElevatedProcess(program, arguments);
+#else
+    QStringList elevatedArguments;
+    elevatedArguments << program << arguments;
+    CommandResult result = runProcess(QStringLiteral("pkexec"), elevatedArguments);
+    // pkexec returns 126 when authorization fails and 127 when the program is missing.
+    result.authorized = result.launched && result.exitCode != 126 && result.exitCode != 127;
+    return result;
+#endif
+}
+
+bool utils::isRunningAsRoot() const
+{
+    return geteuid() == 0;
+}
 
 QPair<QStringList, QJsonArray> utils::scanDevices(bool initializing)
 {
-    QString output = getSmartctlOutput({"--scan", "--json"}, false, initializing);
-    QJsonDocument doc = QJsonDocument::fromJson(output.toUtf8());
-    QJsonObject jsonObj = doc.object();
-    QJsonArray devices = jsonObj["devices"].toArray();
     QString smartctlPath = getSmartctlPath();
-    QStringList commandList;
-    QStringList deviceOutputs;
-
-    for (const QJsonValue &value : std::as_const(devices)) {
-        QJsonObject device = value.toObject();
-        QString deviceName = device["name"].toString();
-        commandList.append((smartctlPath + " -x --json=o %1").arg(deviceName));
-    }
-    QString command = commandList.join(" ; ");
 
     if (smartctlPath.isEmpty()) {
         QMessageBox::critical(nullptr, QObject::tr("QDiskInfo Error"), QObject::tr("smartctl was not found, please install it!"));
         QTimer::singleShot(0, qApp, &QApplication::quit);
+        return QPair<QStringList, QJsonArray>(QStringList(), QJsonArray());
     }
 
-    QString allDevicesOutput = getSmartctlOutput({"sh", "-c", command}, true, initializing);
+    CommandResult scanResult = runCommand(smartctlPath, {QStringLiteral("--scan"), QStringLiteral("--json")});
+    QJsonDocument doc = QJsonDocument::fromJson(scanResult.standardOutput.toUtf8());
+    QJsonObject jsonObj = doc.object();
+    QJsonArray devices = jsonObj["devices"].toArray();
+
+#if defined(Q_OS_MACOS)
+    // Devices can be hidden from unprivileged processes. Only retry with elevated
+    // rights when the plain scan found nothing, so the user is not prompted twice.
+    if (devices.isEmpty()) {
+        CommandResult elevatedScan = runCommandAsRoot(smartctlPath, {QStringLiteral("--scan"), QStringLiteral("--json")});
+        if (elevatedScan.authorized) {
+            QJsonArray elevatedDevices = QJsonDocument::fromJson(elevatedScan.standardOutput.toUtf8())
+                                             .object().value("devices").toArray();
+            if (!elevatedDevices.isEmpty()) {
+                devices = elevatedDevices;
+            }
+        }
+    }
+#endif
+
+    QStringList commandList;
+
+    for (const QJsonValue &value : std::as_const(devices)) {
+        QJsonObject device = value.toObject();
+        QString deviceName = device["name"].toString();
+        // The type reported by --scan (nvme, sat, ata, scsi, ...) has to be forwarded,
+        // otherwise smartctl misdetects devices - this is the norm on macOS.
+        QString deviceType = device["type"].toString();
+
+        QString command = shellQuote(smartctlPath) + QStringLiteral(" -x --json=o ");
+        if (!deviceType.isEmpty()) {
+            command += QStringLiteral("-d ") + shellQuote(deviceType) + QLatin1Char(' ');
+        }
+        command += shellQuote(deviceName);
+        commandList.append(command);
+    }
+
+    if (commandList.isEmpty()) {
+        return QPair<QStringList, QJsonArray>(QStringList(), devices);
+    }
+
+    CommandResult devicesResult = runCommandAsRoot(QStringLiteral("/bin/sh"),
+                                                   {QStringLiteral("-c"), commandList.join(QStringLiteral(" ; "))});
+
+    if (!devicesResult.authorized) {
+        QMessageBox::critical(nullptr, QObject::tr("QDiskInfo Error"), QObject::tr("QDiskInfo needs root access in order to read S.M.A.R.T. data!"));
+        if (initializing) {
+            QTimer::singleShot(0, qApp, &QApplication::quit);
+        }
+        return QPair<QStringList, QJsonArray>(QStringList(), QJsonArray());
+    }
+
+    QString allDevicesOutput = devicesResult.standardOutput;
+    QStringList deviceOutputs;
 
     qsizetype startIndex = 0;
     qsizetype endIndex = 0;
@@ -136,34 +290,23 @@ QPair<QStringList, QJsonArray> utils::scanDevices(bool initializing)
 
 QString utils::initiateSelfTest(const QString &testType, const QString &deviceNode)
 {
-    QProcess process;
-    QString command = getSmartctlPath();
-    QStringList arguments;
-    arguments << command << "--json=o" << "-x" << "-t" << testType << deviceNode;
+    CommandResult result = runCommandAsRoot(getSmartctlPath(),
+                                            {QStringLiteral("--json=o"), QStringLiteral("-x"),
+                                             QStringLiteral("-t"), testType, deviceNode});
 
-    process.start("pkexec", arguments);
-    process.waitForFinished(-1);
-
-    if (process.isOpen()) {
-        return process.readAllStandardOutput();
-    } else {
+    if (!result.authorized) {
         return QString();
     }
+    return result.standardOutput;
 }
 
 void utils::cancelSelfTest(const QString &deviceNode)
 {
-    QProcess process;
-    QString command = getSmartctlPath();
-    QStringList arguments;
-    arguments << command << "-X" << deviceNode;
+    CommandResult result = runCommandAsRoot(getSmartctlPath(), {QStringLiteral("-X"), deviceNode});
 
-    process.start("pkexec", arguments);
-    process.waitForFinished(-1);
-
-    if (process.exitCode() == 126 || process.exitCode() == 127) {
+    if (!result.authorized) {
         QMessageBox::critical(nullptr, QObject::tr("QDiskInfo Error"), QObject::tr("QDiskInfo needs root access in order to abort a self-test!"));
-    } else if (process.exitCode() == QProcess::NormalExit) {
+    } else if (result.exitCode == QProcess::NormalExit) {
         QMessageBox::information(nullptr, QObject::tr("Test Requested"), QObject::tr("The self-test has been aborted"));
     } else {
         QMessageBox::critical(nullptr, QObject::tr("QDiskInfo Error"), QObject::tr("Error: Something went wrong"));

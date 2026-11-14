@@ -10,6 +10,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic -Wuseless-cast -Wconversion -Wsign-conversion -Wshadow")
 
+if (APPLE)
+    set(BUNDLE_ID "io.github.edisionnano.qdiskinfo" CACHE STRING "macOS bundle identifier")
+endif()
+
 if (NOT DEFINED QT_VERSION_MAJOR)
     find_package(QT NAMES Qt6 COMPONENTS Core QUIET)
     if (NOT QT_FOUND)
@@ -24,6 +28,10 @@ if(ENABLE_TRANSLATIONS)
     list(APPEND QT_COMPONENTS LinguistTools)
 endif()
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS ${QT_COMPONENTS})
+
+# Optional. Linking it guarantees that the Qt SVG image plugin is deployed with the
+# binary, which the bundled .svg icons (window icon, status dots) rely on.
+find_package(Qt${QT_VERSION_MAJOR} QUIET COMPONENTS Svg)
 
 file(GLOB_RECURSE PROJECT_SOURCES
     include/*.h
@@ -60,6 +68,11 @@ if(ENABLE_TRANSLATIONS)
     list(APPEND PROJECT_SOURCES ${TRANSLATIONS_QRC})
 endif()
 
+if(APPLE)
+    set(APP_ICON "${CMAKE_SOURCE_DIR}/dist/${PROJECT_NAME}.icns")
+    list(APPEND PROJECT_SOURCES ${APP_ICON})
+endif()
+
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
 if(CALL_LUPDATE)
@@ -78,13 +91,33 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
+if(TARGET Qt${QT_VERSION_MAJOR}::Svg)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Qt${QT_VERSION_MAJOR}::Svg)
+endif()
+
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    ${BUNDLE_ID_OPTION}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
+
+if(APPLE)
+    # On macOS the raw SMART data is read through the IOKit user clients
+    # (see src/asciiview.cpp), which live in IOKit and CoreFoundation.
+    find_library(IOKIT_FRAMEWORK IOKit)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+
+    set_source_files_properties(${APP_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "${BUNDLE_ID}"
+        MACOSX_BUNDLE_ICON_FILE "${PROJECT_NAME}.icns"
+        MACOSX_BUNDLE_COPYRIGHT "GPL-3.0-or-later"
+    )
+endif()
 
 include(GNUInstallDirs)
 install(TARGETS ${PROJECT_NAME}
@@ -92,10 +125,13 @@ install(TARGETS ${PROJECT_NAME}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-install(FILES "dist/${PROJECT_NAME}.desktop"
-        DESTINATION "share/applications")
-install(FILES "dist/${PROJECT_NAME}.svg"
-        DESTINATION "share/icons/hicolor/scalable/apps")
+
+if(NOT APPLE)
+    install(FILES "dist/${PROJECT_NAME}.desktop"
+            DESTINATION "share/applications")
+    install(FILES "dist/${PROJECT_NAME}.svg"
+            DESTINATION "share/icons/hicolor/scalable/apps")
+endif()
 
 if(QT_VERSION_MAJOR GREATER_EQUAL 6)
     qt_finalize_executable(${PROJECT_NAME})

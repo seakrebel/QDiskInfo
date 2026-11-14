@@ -6,12 +6,27 @@
 #include "jsonparser.h"
 
 #include <QDesktopServices>
+#include <QFile>
 #include <QFileDialog>
 #include <QJsonDocument>
 #include <QMessageBox>
+#include <QTemporaryFile>
 #include <QUrl>
 #include <QTextEdit>
 #include <QDialogButtonBox>
+
+namespace {
+// QIcon::fromTheme() returns a null icon on platforms without an icon theme
+// (macOS), so fall back to the icon shipped in the resource file.
+QIcon iconFromThemeOrResource(const QString &themeName, const QString &resourcePath)
+{
+    const QIcon themedIcon = QIcon::fromTheme(themeName);
+    if (!themedIcon.isNull()) {
+        return themedIcon;
+    }
+    return QIcon(resourcePath);
+}
+}
 
 const int PRECISION_TOTALS_TO_STR = 2;
 const int PRECISION_CAPACITY_TO_STR = 0;
@@ -64,6 +79,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     nextButton = ui->centralwidget->findChild<QPushButton*>("nextButton");
     prevButton = ui->centralwidget->findChild<QPushButton*>("previousButton");
+    // The theme icons are unavailable on platforms without an icon theme (macOS),
+    // which would leave both navigation buttons blank.
+    nextButton->setIcon(iconFromThemeOrResource(QStringLiteral("go-next"), QStringLiteral(":/icons/go-next.svg")));
+    prevButton->setIcon(iconFromThemeOrResource(QStringLiteral("go-previous"), QStringLiteral(":/icons/go-previous.svg")));
     nextButton->setShortcut(QKeySequence::Forward);
     prevButton->setShortcut(QKeySequence::Back);
 
@@ -106,14 +125,14 @@ MainWindow::MainWindow(QWidget *parent)
     ui->actionCyclic_Navigation->setChecked(settings.value("CyclicNavigation", false).toBool());
     ui->actionUse_GB_instead_of_TB->setChecked(settings.value("UseGB", false).toBool());
 
-    QAction *toggleEchoModeAction = serialNumberLineEdit->addAction(QIcon::fromTheme(QStringLiteral("visibility")), QLineEdit::TrailingPosition);
+    QAction *toggleEchoModeAction = serialNumberLineEdit->addAction(iconFromThemeOrResource(QStringLiteral("visibility"), QStringLiteral(":/icons/visibility.svg")), QLineEdit::TrailingPosition);
     connect(toggleEchoModeAction, &QAction::triggered, this, [=]() {
         if (serialNumberLineEdit->echoMode() == QLineEdit::Password) {
             serialNumberLineEdit->setEchoMode(QLineEdit::Normal);
-            toggleEchoModeAction->setIcon(QIcon::fromTheme(QStringLiteral("hint")));
+            toggleEchoModeAction->setIcon(iconFromThemeOrResource(QStringLiteral("hint"), QStringLiteral(":/icons/visibility-off.svg")));
         } else if (serialNumberLineEdit->echoMode() == QLineEdit::Normal) {
             serialNumberLineEdit->setEchoMode(QLineEdit::Password);
-            toggleEchoModeAction->setIcon(QIcon::fromTheme(QStringLiteral("visibility")));
+            toggleEchoModeAction->setIcon(iconFromThemeOrResource(QStringLiteral("visibility"), QStringLiteral(":/icons/visibility.svg")));
         }
     });
 
@@ -1343,7 +1362,11 @@ void MainWindow::on_actionGitHub_triggered()
 
 void MainWindow::on_actionAbout_QDiskInfo_triggered()
 {
+#if defined(Q_OS_MACOS)
+    QString message = tr("An ATA and NVMe S.M.A.R.T. data viewer for macOS") + "\n";
+#else
     QString message = tr("An ATA and NVMe S.M.A.R.T. data viewer for Linux") + "\n";
+#endif
     message += tr("Licensed under the GNU G.P.L. Version 3") + "\n";
     message += tr("Made by Samantas5855") + "\n";
     message += tr("Version") + " " + QString::number(PROJECT_VERSION_MAJOR) + "." + QString::number(PROJECT_VERSION_MINOR);
@@ -1442,18 +1465,35 @@ void MainWindow::on_actionASCII_View_triggered()
 {
     QString deviceNodePath = deviceNodeLineEdit->text();
 
-    QProcess *process = new QProcess(this);
-    process->start("pkexec", {QCoreApplication::applicationFilePath(), "--ascii-view", deviceNodePath});
+    // The helper runs as root, so the data is handed over through a file instead of
+    // stdout: piping binary data through pkexec/osascript is unreliable.
+    QTemporaryFile outputFile;
+    if (!outputFile.open()) {
+        QMessageBox::critical(this, tr("QDiskInfo Error"), tr("Unable to create a temporary file"));
+        return;
+    }
+    const QString outputPath = outputFile.fileName();
+    outputFile.close();
 
-    if (!process->waitForFinished()) {
+    utils::CommandResult result = Utils.runCommandAsRoot(QCoreApplication::applicationFilePath(),
+                                                        {QStringLiteral("--ascii-view"), deviceNodePath,
+                                                         QStringLiteral("--output"), outputPath});
+
+    if (!result.authorized) {
+        QMessageBox::critical(this, tr("QDiskInfo Error"), tr("QDiskInfo needs root access in order to read S.M.A.R.T. data!"));
         return;
     }
 
-    QByteArray binaryData = process->readAllStandardOutput();
-    QByteArray errorData = process->readAllStandardError();
+    QFile dataFile(outputPath);
+    if (!dataFile.open(QIODevice::ReadOnly)) {
+        QMessageBox::critical(this, tr("QDiskInfo Error"), tr("Unable to read the raw S.M.A.R.T. data"));
+        return;
+    }
+    QByteArray binaryData = dataFile.readAll();
+    dataFile.close();
 
-    if (!errorData.isEmpty()) {
-        QMessageBox::critical(this, tr("QDiskInfo Error"), tr("QDiskInfo needs root access in order to read S.M.A.R.T. data!"));
+    if (binaryData.isEmpty()) {
+        QMessageBox::warning(this, tr("QDiskInfo Error"), tr("The raw S.M.A.R.T. data could not be read from this device."));
         return;
     }
 

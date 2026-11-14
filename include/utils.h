@@ -5,15 +5,27 @@
 #include <QJsonArray>
 #include <QMenu>
 #include <QSpacerItem>
+#include <QStringList>
 
 class utils
 {
 public:
+    struct CommandResult
+    {
+        bool launched = false;   // the process was started and finished
+        bool authorized = false; // it ran (or would have run) with the requested privileges
+        int exitCode = -1;
+        QString standardOutput;
+        QString standardError;
+    };
+
     utils() = default;
 
     QString clearButtonGroup(QButtonGroup* buttonGroup, QHBoxLayout* horizontalLayout, QSpacerItem* buttonStretch, QMenu* menuDisk);
     QString getSmartctlPath();
-    QString getSmartctlOutput(const QStringList &arguments, bool root, bool initializing);
+    CommandResult runCommand(const QString &program, const QStringList &arguments);
+    CommandResult runCommandAsRoot(const QString &program, const QStringList &arguments);
+    bool isRunningAsRoot() const;
     QPair<QStringList, QJsonArray> scanDevices(bool initializing);
     QString initiateSelfTest(const QString &testType, const QString &deviceNode);
     void cancelSelfTest(const QString &deviceNode);

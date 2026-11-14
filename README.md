@@ -24,6 +24,10 @@ Arch Linux (includes Manjaro, EndeavourOS. CachyOS, Garuda Linux, etc.)
 ```sh
 sudo pacman -Syu base-devel cmake hicolor-icon-theme polkit qt6-base qt6-svg smartmontools
 ```
+macOS 15 (Sequoia), Intel or Apple Silicon, using [Homebrew](https://brew.sh)
+```sh
+brew install cmake qt smartmontools
+```
 ### Compilation Steps
 First you will need to clone the repository and cd inside
 ```sh
@@ -50,6 +54,22 @@ If you installed QDiskInfo on your system using `sudo make install` and wish to 
 sudo xargs rm < install_manifest.txt
 ```
 in your build directory. The `install_manifest.txt` file is generated after running `sudo make install` so if you no longer have it, you can install again and then uninstall.
+
+### Building on macOS
+Homebrew's Qt lives outside the default search path, so point CMake at it and build the bundle
+```sh
+cmake .. -DCMAKE_BUILD_TYPE:STRING=MinSizeRel -DQT_VERSION_MAJOR=6 -DENABLE_TRANSLATIONS=ON -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+cmake --build . --parallel
+open QDiskInfo.app
+```
+`make install` is not used on macOS, the build already produces a `QDiskInfo.app` bundle. To produce a self-contained bundle that also runs on Macs without Homebrew installed
+```sh
+"$(brew --prefix qt)/bin/macdeployqt" QDiskInfo.app -always-overwrite
+```
+macOS specifics:
+- S.M.A.R.T. data can only be read as root. Instead of polkit (Linux) QDiskInfo asks for administrator rights through the standard macOS authorization dialog, so `smartctl` runs elevated only when data is read or a self-test is started.
+- `smartctl` has to be installed through Homebrew (`/opt/homebrew/sbin` or `/usr/local/sbin`). The application looks there explicitly because a bundle started from Finder does not inherit a shell `PATH`.
+- The ASCII View shows the 512 byte SMART page. macOS has no SCSI INQUIRY passthrough, so the trailing INQUIRY block that is shown on Linux is omitted.
 
 ## Localisation
 Currently, QDiskInfo has support for the following languages:
