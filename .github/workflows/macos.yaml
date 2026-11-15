@@ -55,7 +55,11 @@ jobs:
             -DCMAKE_PREFIX_PATH="$QT_PREFIX"
 
       - name: Build
-        run: cmake --build build --parallel
+        # Serial on purpose: qt_add_translations runs lupdate, which rewrites the .ts
+        # files inside the source tree, while lrelease parses the same files. In a
+        # parallel build those two race and lrelease dies with
+        # "Parse error at translations/qdiskinfo_ca_ES.ts:1:0: Premature end of document".
+        run: cmake --build build
 
       - name: Bundle Qt frameworks
         run: |
