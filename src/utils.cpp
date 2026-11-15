@@ -61,13 +61,19 @@ utils::CommandResult runElevatedProcess(const QString &program, const QStringLis
     const QString scriptPath = tempDir.filePath(QStringLiteral("run.sh"));
     const QString outputPath = tempDir.filePath(QStringLiteral("stdout"));
     const QString errorPath = tempDir.filePath(QStringLiteral("stderr"));
+    const QString statusPath = tempDir.filePath(QStringLiteral("status"));
 
-    QString script = QStringLiteral("#!/bin/sh\nexec ");
+    QString script = QStringLiteral("#!/bin/sh\n");
     script += shellQuote(program);
     for (const QString &argument : arguments) {
         script += QLatin1Char(' ') + shellQuote(argument);
     }
     script += QStringLiteral(" > %1 2> %2\n").arg(shellQuote(outputPath), shellQuote(errorPath));
+    // "do shell script" raises an AppleScript error as soon as the command exits with a
+    // non-zero status, and smartctl does that for harmless reasons all the time (its
+    // status is a bitmask: 4 = one SMART command failed, 8 = the disk is failing, ...).
+    // Record the real status and always report success to osascript.
+    script += QStringLiteral("echo $? > %1\nexit 0\n").arg(shellQuote(statusPath));
 
     QFile scriptFile(scriptPath);
     if (!scriptFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -95,9 +101,21 @@ utils::CommandResult runElevatedProcess(const QString &program, const QStringLis
                                                             {QStringLiteral("-e"), appleScript});
 
     result.launched = osascriptResult.launched;
-    result.exitCode = osascriptResult.exitCode;
     result.standardError = osascriptResult.standardError;
-    result.authorized = osascriptResult.launched && osascriptResult.exitCode == 0;
+
+    // The helper always exits 0, so the status file is what tells apart "the program
+    // ran" from "the elevation never happened" (cancelled dialog, rejected password).
+    QFile statusFile(statusPath);
+    bool haveStatus = false;
+    int recordedStatus = -1;
+    if (statusFile.open(QIODevice::ReadOnly)) {
+        bool ok = false;
+        recordedStatus = statusFile.readAll().trimmed().toInt(&ok);
+        haveStatus = ok;
+    }
+
+    result.exitCode = haveStatus ? recordedStatus : osascriptResult.exitCode;
+    result.authorized = osascriptResult.launched && osascriptResult.exitCode == 0 && haveStatus;
 
     QFile outputFile(outputPath);
     if (outputFile.open(QIODevice::ReadOnly)) {
@@ -254,7 +272,17 @@ QPair<QStringList, QJsonArray> utils::scanDevices(bool initializing)
                                                    {QStringLiteral("-c"), commandList.join(QStringLiteral(" ; "))});
 
     if (!devicesResult.authorized) {
-        QMessageBox::critical(nullptr, QObject::tr("QDiskInfo Error"), QObject::tr("QDiskInfo needs root access in order to read S.M.A.R.T. data!"));
+        QMessageBox messageBox;
+        messageBox.setIcon(QMessageBox::Critical);
+        messageBox.setWindowTitle(QObject::tr("QDiskInfo Error"));
+        messageBox.setText(QObject::tr("QDiskInfo needs root access in order to read S.M.A.R.T. data!"));
+        const QString details = devicesResult.standardError.trimmed();
+        if (!details.isEmpty()) {
+            // Keep the reason reachable instead of failing silently (cancelled dialog,
+            // rejected password, AppleScript error, ...).
+            messageBox.setDetailedText(details);
+        }
+        messageBox.exec();
         if (initializing) {
             QTimer::singleShot(0, qApp, &QApplication::quit);
         }
