@@ -77,6 +77,17 @@ jobs:
           ls -1 build/QDiskInfo.app/Contents/Resources/*.icns
           codesign --verify --deep --strict build/QDiskInfo.app
 
+      - name: Upload the bundle before packaging
+        # Packaging can fail - hdiutil has been seen returning "Resource busy" -
+        # and that used to throw the finished .app away with it. Keep it as an
+        # artifact of its own, whatever happens in the steps that follow.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QDiskInfo-macos-${{ matrix.arch }}-app
+          path: build/QDiskInfo.app
+          if-no-files-found: warn
+
       - name: Package
         run: |
           ditto -c -k --keepParent build/QDiskInfo.app "QDiskInfo-${{ matrix.arch }}.zip"
