@@ -1,8 +1,6 @@
 #pragma once
 
-#include <QColor>
 #include <QPainter>
-#include <QStyle>
 #include <QStyleOptionViewItem>
 #include <QStyledItemDelegate>
 

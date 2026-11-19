@@ -17,8 +17,11 @@ class CustomButton : public QPushButton {
     Q_OBJECT
 
 public:
-    CustomButton(const QString &health_, const QString &temperature_, const QString &device_,
-                 const QColor &accent_, StatusGlyph glyph_, QWidget *parent = nullptr);
+    // Height of a tab, and therefore of the strip it sits in.
+    static const int TAB_HEIGHT = 46;
+
+    CustomButton(const QString &health, const QString &temperature, const QString &device,
+                 const QColor &accent, StatusGlyph statusGlyph, QWidget *parent = nullptr);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -29,19 +32,16 @@ protected:
     void enterEvent(QEvent *event) override;
 #endif
     void leaveEvent(QEvent *event) override;
-    void setText1(const QString &newText1);
-    void setText2(const QString &newText2);
-    void setText3(const QString &newText3);
-    void adjustWidthToFitText();
 
 private:
     QFont healthFont() const;
     QFont tabFont() const;
+    void adjustWidthToFitText();
 
-    QString text1;
-    QString text2;
-    QString text3;
-    QColor lineColor;
+    QString healthText;
+    QString temperatureText;
+    QString deviceText;
+    QColor accentColor;
     StatusGlyph glyph;
     bool hovered = false;
 };

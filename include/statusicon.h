@@ -1,14 +1,15 @@
 #pragma once
 
 #include <QColor>
-#include <QLinearGradient>
 #include <QPainter>
 #include <QPen>
 #include <QPointF>
+#include <QPolygonF>
+#include <QRadialGradient>
 #include <QRect>
 #include <QRectF>
 #include <QString>
-#include <QtMath>
+#include <QtGlobal>
 
 // The white mark CrystalDiskInfo draws inside a status ball.
 enum class StatusGlyph
@@ -40,7 +41,7 @@ inline void paintStatusBall(QPainter *painter, const QRect &rect, const QColor &
     painter->drawEllipse(ball.adjusted(0.5, 0.5, -0.5, -0.5));
 
     if (glyph != StatusGlyph::None) {
-        QPen markPen(Qt::white, qMax(1.2, diameter * 0.13), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        const QPen markPen(Qt::white, qMax(1.2, diameter * 0.13), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         painter->setPen(markPen);
 
         const QPointF origin = ball.topLeft();
@@ -72,38 +73,27 @@ inline void paintStatusBall(QPainter *painter, const QRect &rect, const QColor &
     painter->restore();
 }
 
-// The health boxes of CrystalDiskInfo are glossy status-coloured panels with a
-// thin darker border, not flat colour fills.
-struct StatusBoxStyle
+// CrystalDiskInfo paints a health box as a vertical gloss: a pale tint at the
+// top, the saturated status colour in the middle and a pale tint again at the
+// bottom, framed by a darker border. Every shade is derived from that one
+// colour, so the box, the ball next to it and the health word on the tab
+// describing the same disk cannot drift apart. Tinting in integer arithmetic
+// keeps the result identical whatever qreal is (float on Qt6, double on Qt5)
+// and avoids the -Wfloat-conversion / -Wuseless-cast traps between the two.
+inline QColor statusBoxTint(const QColor &accent, int whitePercent)
 {
-    const char *gradient;
-    const char *border;
-};
+    return QColor((accent.red() * (100 - whitePercent) + 255 * whitePercent) / 100,
+                  (accent.green() * (100 - whitePercent) + 255 * whitePercent) / 100,
+                  (accent.blue() * (100 - whitePercent) + 255 * whitePercent) / 100);
+}
 
-inline QString statusBoxStyleSheet(StatusGlyph glyph, bool pill = false)
+inline QString statusBoxStyleSheet(const QColor &accent, bool pill = false)
 {
-    StatusBoxStyle style;
-    switch (glyph) {
-    case StatusGlyph::Cross:
-        style = {"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFF0EF, stop:0.40 #FF9E97, "
-                 "stop:0.56 #E8453A, stop:0.80 #FF7C6F, stop:1 #FFD5D0)", "#B5402F"};
-        break;
-    case StatusGlyph::Exclamation:
-        style = {"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFFBE8, stop:0.40 #FFDD80, "
-                 "stop:0.56 #F6B32B, stop:0.80 #FFD06A, stop:1 #FFEFC2)", "#C39A2A"};
-        break;
-    case StatusGlyph::Check:
-        style = {"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E9F2FF, stop:0.40 #77BBF8, "
-                 "stop:0.56 #15ABF4, stop:0.80 #4FBEE8, stop:1 #AEEEFF)", "#4A7EBB"};
-        break;
-    case StatusGlyph::None:
-    default:
-        style = {"qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FAFAFA, stop:0.40 #DEDEDE, "
-                 "stop:0.56 #BEBEBE, stop:0.80 #D2D2D2, stop:1 #F0F0F0)", "#A3A3A3"};
-        break;
-    }
+    const QString gradient = QStringLiteral(
+        "qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %1, stop:0.40 %2, stop:0.56 %3, stop:0.80 %4, stop:1 %5)")
+        .arg(statusBoxTint(accent, 85).name(), statusBoxTint(accent, 35).name(), accent.name(),
+             statusBoxTint(accent, 28).name(), statusBoxTint(accent, 73).name());
 
     return QStringLiteral("background: %1; border: 1px solid %2; border-radius: %3px;")
-        .arg(QLatin1String(style.gradient), QLatin1String(style.border),
-             QString::number(pill ? 17 : 3));
+        .arg(gradient, accent.darker(130).name(), QString::number(pill ? 17 : 3));
 }

@@ -1,5 +1,6 @@
 #include "custombutton.h"
 
+#include <QFontInfo>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPoint>
@@ -7,7 +8,6 @@
 
 namespace {
 // Proportions of a CrystalDiskInfo drive tab.
-const int TAB_HEIGHT = 46;
 const int BALL_DIAMETER = 15;
 const int BALL_LEFT = 9;
 const int TEXT_GAP = 8;
@@ -21,9 +21,10 @@ const QColor TAB_UNDERLINE(0x1E, 0x9C, 0xF0);
 const QColor TAB_TEXT(0x20, 0x20, 0x20);
 }
 
-CustomButton::CustomButton(const QString &text1_, const QString &text2_, const QString &text3_,
-                           const QColor &lineColor_, StatusGlyph glyph_, QWidget *parent)
-    : QPushButton(parent), text1(text1_), text2(text2_), text3(text3_), lineColor(lineColor_), glyph(glyph_) {
+CustomButton::CustomButton(const QString &health, const QString &temperature, const QString &device,
+                           const QColor &accent, StatusGlyph statusGlyph, QWidget *parent)
+    : QPushButton(parent), healthText(health), temperatureText(temperature), deviceText(device),
+      accentColor(accent), glyph(statusGlyph) {
     setFlat(true);
     setFocusPolicy(Qt::NoFocus);
     setMinimumHeight(TAB_HEIGHT);
@@ -31,10 +32,12 @@ CustomButton::CustomButton(const QString &text1_, const QString &text2_, const Q
     adjustWidthToFitText();
 }
 
-// CrystalDiskInfo uses a smaller font than the rest of the window for the tab.
+// CrystalDiskInfo uses a smaller font for the tab than for the rest of the
+// window. QFontInfo is asked for the point size because a font may describe
+// itself in pixels instead, which leaves pointSizeF() at -1.
 QFont CustomButton::tabFont() const {
     QFont tabFont = font();
-    const qreal baseSize = tabFont.pointSizeF() > 0 ? tabFont.pointSizeF() : 11.0;
+    const qreal baseSize = qMax(6.0, QFontInfo(tabFont).pointSizeF());
     tabFont.setPointSizeF(qBound(8.0, baseSize * 0.78, 11.0));
     return tabFont;
 }
@@ -49,8 +52,9 @@ void CustomButton::adjustWidthToFitText() {
     const QFontMetrics healthMetrics(healthFont());
     const QFontMetrics tabMetrics(tabFont());
 
-    const int healthWidth = healthMetrics.horizontalAdvance(text1) + TEXT_GAP + tabMetrics.horizontalAdvance(text2);
-    const int deviceWidth = tabMetrics.horizontalAdvance(text3);
+    const int healthWidth = healthMetrics.horizontalAdvance(healthText) + TEXT_GAP
+                            + tabMetrics.horizontalAdvance(temperatureText);
+    const int deviceWidth = tabMetrics.horizontalAdvance(deviceText);
 
     const int desiredWidth = qMax(healthWidth, deviceWidth) + BALL_LEFT + BALL_DIAMETER + TEXT_GAP + TEXT_RIGHT_PADDING;
     setMinimumWidth(desiredWidth);
@@ -63,7 +67,6 @@ void CustomButton::paintEvent(QPaintEvent *event) {
     const bool selected = isChecked();
 
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing, true);
 
     QColor background = selected ? TAB_BACKGROUND_SELECTED : TAB_BACKGROUND;
     if (hovered && !selected) {
@@ -72,7 +75,10 @@ void CustomButton::paintEvent(QPaintEvent *event) {
     painter.fillRect(rect(), background);
 
     // The active tab is underlined instead of boxed, exactly like the real one.
+    // The hairlines are drawn without antialiasing so that they stay one pixel
+    // wide instead of smearing over two.
     const int borderBottom = rect().bottom() - (selected ? UNDERLINE_HEIGHT : 0);
+    painter.setRenderHint(QPainter::Antialiasing, false);
     painter.setPen(TAB_BORDER);
     painter.drawLine(rect().topLeft(), QPoint(rect().right(), rect().top()));
     painter.drawLine(rect().topLeft(), QPoint(rect().left(), borderBottom));
@@ -83,8 +89,9 @@ void CustomButton::paintEvent(QPaintEvent *event) {
                          TAB_UNDERLINE);
     }
 
+    painter.setRenderHint(QPainter::Antialiasing, true);
     paintStatusBall(&painter, QRect(BALL_LEFT, (height() - BALL_DIAMETER) / 2, BALL_DIAMETER, BALL_DIAMETER),
-                    lineColor, glyph);
+                    accentColor, glyph);
 
     const QFont healthTextFont = healthFont();
     const QFont tabTextFont = tabFont();
@@ -97,15 +104,15 @@ void CustomButton::paintEvent(QPaintEvent *event) {
     const QRect deviceLine(healthLine.left(), healthLine.bottom() + 1, healthLine.width(), lineHeight);
 
     // "Good  33 °C" - the health in the status colour, the temperature in black.
-    const int healthWidth = healthMetrics.horizontalAdvance(text1);
+    const int healthWidth = healthMetrics.horizontalAdvance(healthText);
     painter.setFont(healthTextFont);
-    painter.setPen(lineColor);
-    painter.drawText(healthLine, Qt::AlignLeft | Qt::AlignVCenter, text1);
+    painter.setPen(accentColor);
+    painter.drawText(healthLine, Qt::AlignLeft | Qt::AlignVCenter, healthText);
 
     painter.setFont(tabTextFont);
     painter.setPen(TAB_TEXT);
-    painter.drawText(healthLine.adjusted(healthWidth + TEXT_GAP, 0, 0, 0), Qt::AlignLeft | Qt::AlignVCenter, text2);
-    painter.drawText(deviceLine, Qt::AlignLeft | Qt::AlignVCenter, text3);
+    painter.drawText(healthLine.adjusted(healthWidth + TEXT_GAP, 0, 0, 0), Qt::AlignLeft | Qt::AlignVCenter, temperatureText);
+    painter.drawText(deviceLine, Qt::AlignLeft | Qt::AlignVCenter, deviceText);
 
     painter.end();
 }
@@ -133,28 +140,4 @@ void CustomButton::leaveEvent(QEvent *event) {
     hovered = false;
     update();
     QPushButton::leaveEvent(event);
-}
-
-void CustomButton::setText1(const QString &newText1) {
-    if (text1 != newText1) {
-        text1 = newText1;
-        adjustWidthToFitText();
-        update();
-    }
-}
-
-void CustomButton::setText2(const QString &newText2) {
-    if (text2 != newText2) {
-        text2 = newText2;
-        adjustWidthToFitText();
-        update();
-    }
-}
-
-void CustomButton::setText3(const QString &newText3) {
-    if (text3 != newText3) {
-        text3 = newText3;
-        adjustWidthToFitText();
-        update();
-    }
 }

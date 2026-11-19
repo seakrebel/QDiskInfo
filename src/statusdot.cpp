@@ -2,6 +2,7 @@
 #include "statusicon.h"
 
 #include <QApplication>
+#include <QColor>
 #include <QStyle>
 
 void StatusDot::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const

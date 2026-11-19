@@ -819,14 +819,17 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
         healthStatusValueLabel = healthStatusValue;
     }
 
-    if (temperatureInt > warningTemperature) { // TODO: Let the user set an alarm temp.
-        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Cross, true));
-    } else if ((temperatureInt < criticalTemperature) && (temperatureInt > warningTemperature)){
-        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Exclamation, true));
+    // CrystalDiskInfo colours the temperature box by the limits of the drive
+    // itself: red once the critical limit is reached, amber past the warning
+    // one, and blue while it stays below both.
+    if (temperatureInt >= criticalTemperature) { // TODO: Let the user set an alarm temp.
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(badColor, true));
+    } else if (temperatureInt > warningTemperature) {
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(cautionColor, true));
     } else if (temperatureInt == 0) {
-        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::None, true));
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(naColor, true));
     } else {
-        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Check, true));
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(goodColor, true));
     }
 
     QString labelStyle = "font-size:11pt; font-weight:700; color:black";
@@ -845,13 +848,13 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
     temperatureValueLabel->setAlignment(Qt::AlignCenter);
 
     if (health == tr("Bad")) {
-        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Cross));
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(badColor));
     } else if (health == tr("Caution")){
-        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Exclamation));
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(cautionColor));
     } else if (health == tr("Good")) {
-        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Check));
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(goodColor));
     } else {
-        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::None));
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(naColor));
     }
 
     if (INCLUDE_OPTIONAL_RESOURCES) {
@@ -1387,6 +1390,12 @@ void MainWindow::applyCrystalDiskInfoStyle()
     ui->scrollAreaWidgetContents->setAutoFillBackground(true);
     ui->scrollAreaWidgetContents->setPalette(stripPalette);
     ui->scrollArea->setStyleSheet(QStringLiteral("QScrollArea { border: 0px; border-bottom: 1px solid #C6C6C6; }"));
+
+    // Keep the strip barely taller than a tab and push the tabs to its bottom,
+    // so that the selected tab's underline sits on the bottom edge instead of
+    // floating in the middle of a grey band.
+    ui->scrollArea->setFixedHeight(CustomButton::TAB_HEIGHT + 2);
+    horizontalLayout->setAlignment(Qt::AlignBottom);
 
     const QString navigationButtonStyle = QStringLiteral(
         "QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F7F7F7, stop:1 #DCDCDC);"

@@ -66,7 +66,7 @@
              </size>
             </property>
             <property name="styleSheet">
-             <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E9F2FF, stop:0.40 #77BBF8, stop:0.56 #15ABF4, stop:0.80 #4FBEE8, stop:1 #AEEEFF); border: 1px solid #4A7EBB; border-radius: 3px;</string>
+             <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #DDF0FC, stop:0.40 #6CBEF5, stop:0.56 #1E9CF0, stop:0.80 #5DB7F4, stop:1 #C2E4FA); border: 1px solid #1778B8; border-radius: 3px;</string>
             </property>
             <property name="text">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700; color:#000000;&quot;&gt;Good&lt;/span&gt;&lt;/p&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700; color:#000000;&quot;&gt;100 %&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -111,7 +111,7 @@
              </size>
             </property>
             <property name="styleSheet">
-             <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E9F2FF, stop:0.40 #77BBF8, stop:0.56 #15ABF4, stop:0.80 #4FBEE8, stop:1 #AEEEFF); border: 1px solid #4A7EBB; border-radius: 17px;</string>
+             <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #DDF0FC, stop:0.40 #6CBEF5, stop:0.56 #1E9CF0, stop:0.80 #5DB7F4, stop:1 #C2E4FA); border: 1px solid #1778B8; border-radius: 17px;</string>
             </property>
             <property name="text">
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700; color:#000000;&quot;&gt;23° C&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -233,7 +233,7 @@
                </size>
               </property>
               <property name="styleSheet">
-               <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E9F2FF, stop:0.40 #77BBF8, stop:0.56 #15ABF4, stop:0.80 #4FBEE8, stop:1 #AEEEFF); border: 1px solid #4A7EBB; border-radius: 3px;</string>
+               <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #DDF0FC, stop:0.40 #6CBEF5, stop:0.56 #1E9CF0, stop:0.80 #5DB7F4, stop:1 #C2E4FA); border: 1px solid #1778B8; border-radius: 3px;</string>
               </property>
               <property name="text">
                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700; color:#000000;&quot;&gt;Good 100 %&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -354,7 +354,7 @@
                </size>
               </property>
               <property name="styleSheet">
-               <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #E9F2FF, stop:0.40 #77BBF8, stop:0.56 #15ABF4, stop:0.80 #4FBEE8, stop:1 #AEEEFF); border: 1px solid #4A7EBB; border-radius: 17px;</string>
+               <string notr="true">background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #DDF0FC, stop:0.40 #6CBEF5, stop:0.56 #1E9CF0, stop:0.80 #5DB7F4, stop:1 #C2E4FA); border: 1px solid #1778B8; border-radius: 17px;</string>
               </property>
               <property name="text">
                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700; color:#000000;&quot;&gt;23° C&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
