@@ -568,7 +568,7 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
 
     deviceJson = localObj;
 
-    diskName->setText("<html><head/><body><p><span style='font-size:12pt; font-weight:bold;'>" + modelName + " : " + diskCapacityString + "</span></p></body></html>");
+    diskName->setText("<html><head/><body><p><span style='font-size:14pt; font-weight:bold;'>" + modelName + " : " + diskCapacityString + "</span></p></body></html>");
     firmwareLineEdit->setText(firmwareVersion);
     serialNumberLineEdit->setText(serialNumber);
     typeLineEdit->setText(type);
@@ -614,7 +614,14 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
     powerOnHoursLineEdit->setText(powerOnTime);
     powerOnHoursLineEdit->setAlignment(Qt::AlignRight);
 
+    // Apple NVMe controllers do not report the logical block size, and every
+    // size below would collapse to zero without it. A data unit is 1000 * 512
+    // bytes by definition, which is the unit the conversions expect anyway, so
+    // fall back to 512 bytes per logical sector instead of printing "----".
     int logicalBlockSize = localObj["logical_block_size"].toInt();
+    if (logicalBlockSize <= 0) {
+        logicalBlockSize = 512;
+    }
     if (!isNvme) {
         for (const QJsonValue &attr : std::as_const(attributes)) {
             QJsonObject attrObj = attr.toObject();
@@ -832,7 +839,7 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
         temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(goodColor, true));
     }
 
-    QString labelStyle = "font-size:11pt; font-weight:700; color:black";
+    QString labelStyle = "font-size:13pt; font-weight:700; color:black";
 
     if (temperatureInt > 0) {
         if (ui->actionUse_Fahrenheit->isChecked()) {
