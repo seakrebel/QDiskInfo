@@ -2,6 +2,7 @@
 
 #include "utils.h"
 #include "gridview.h"
+#include "statusicon.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -95,6 +96,10 @@ private:
     void addSmartAttributesTable(const QJsonArray &attributes);
     void transformWindow();
     void mousePressEvent(QMouseEvent*);
+    void applyCrystalDiskInfoStyle();
+    StatusGlyph glyphForHealth(const QString &health) const;
+    StatusGlyph glyphForColor(const QColor &statusColor) const;
+    QString shortDeviceName(const QString &deviceName, int index) const;
 
 private:
     QString mbSymbol;

@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "asciiview.h"
 #include "statusdot.h"
+#include "statusicon.h"
 #include "custombutton.h"
 #include "jsonparser.h"
 
@@ -92,6 +93,8 @@ MainWindow::MainWindow(QWidget *parent)
     nextButton->setFocusPolicy(Qt::NoFocus);
     prevButton->setFocusPolicy(Qt::NoFocus);
 
+    applyCrystalDiskInfoStyle();
+
     ui->actionSave_Image->setShortcut(QKeySequence::Save);
     ui->actionQuit->setShortcut(QKeySequence::Quit);
     ui->actionRescan_Refresh->setShortcut(QKeySequence::Refresh);
@@ -109,10 +112,10 @@ MainWindow::MainWindow(QWidget *parent)
     disksGroup = new QActionGroup(this);
     disksGroup->setExclusive(true);
 
-    goodColor = QColor(Qt::green);
-    cautionColor = QColor(Qt::yellow);
-    badColor = QColor(Qt::red);
-    naColor = QColor(Qt::gray);
+    goodColor = QColor(0x1E, 0x9C, 0xF0);
+    cautionColor = QColor(0xF5, 0xA6, 0x23);
+    badColor = QColor(0xE2, 0x3B, 0x3B);
+    naColor = QColor(0x9E, 0x9E, 0x9E);
 
     statusLabel = new QLabel;
 
@@ -359,7 +362,8 @@ void MainWindow::updateUI(const QString &currentDeviceName)
             healthColor = naColor;
         }
 
-        CustomButton *button = new CustomButton(health, temperature, deviceName, healthColor, this);
+        CustomButton *button = new CustomButton(health, temperature, shortDeviceName(deviceName, i), healthColor,
+                                                glyphForHealth(health), this);
         button->setToolTip(tr("Disk") + " " + QString::number(i) + " : " +  modelName + " : " + diskCapacityString);
         button->setProperty("deviceName", deviceName);
 
@@ -564,7 +568,7 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
 
     deviceJson = localObj;
 
-    diskName->setText("<html><head/><body><p><span style='font-size:14pt; font-weight:bold;'>" + modelName + " " + diskCapacityString + "</span></p></body></html>");
+    diskName->setText("<html><head/><body><p><span style='font-size:12pt; font-weight:bold;'>" + modelName + " : " + diskCapacityString + "</span></p></body></html>");
     firmwareLineEdit->setText(firmwareVersion);
     serialNumberLineEdit->setText(serialNumber);
     typeLineEdit->setText(type);
@@ -816,16 +820,16 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
     }
 
     if (temperatureInt > warningTemperature) { // TODO: Let the user set an alarm temp.
-        temperatureValueLabel->setStyleSheet("background-color: " + badColor.name() + ";");
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Cross, true));
     } else if ((temperatureInt < criticalTemperature) && (temperatureInt > warningTemperature)){
-        temperatureValueLabel->setStyleSheet("background-color: " + cautionColor.name() + ";");
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Exclamation, true));
     } else if (temperatureInt == 0) {
-        temperatureValueLabel->setStyleSheet("background-color: " + naColor.name() + ";");
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::None, true));
     } else {
-        temperatureValueLabel->setStyleSheet("background-color: " + goodColor.name() + ";");
+        temperatureValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Check, true));
     }
 
-    QString labelStyle = "font-size:12pt; font-weight:700; color:black";
+    QString labelStyle = "font-size:11pt; font-weight:700; color:black";
 
     if (temperatureInt > 0) {
         if (ui->actionUse_Fahrenheit->isChecked()) {
@@ -841,13 +845,13 @@ void MainWindow::populateWindow(const QJsonObject &localObj, const QString &heal
     temperatureValueLabel->setAlignment(Qt::AlignCenter);
 
     if (health == tr("Bad")) {
-        healthStatusValueLabel->setStyleSheet("background-color: " + badColor.name() + ";");
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Cross));
     } else if (health == tr("Caution")){
-        healthStatusValueLabel->setStyleSheet("background-color: " + cautionColor.name() + ";");
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Exclamation));
     } else if (health == tr("Good")) {
-        healthStatusValueLabel->setStyleSheet("background-color: " + goodColor.name() + ";");
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::Check));
     } else {
-        healthStatusValueLabel->setStyleSheet("background-color: " + naColor.name() + ";");
+        healthStatusValueLabel->setStyleSheet(statusBoxStyleSheet(StatusGlyph::None));
     }
 
     if (INCLUDE_OPTIONAL_RESOURCES) {
@@ -1004,6 +1008,7 @@ void MainWindow::addSCSIErrorCounterLogTable(const QJsonObject &scsiErrorLog)
 
         QTableWidgetItem *statusItem = new QTableWidgetItem();
         statusItem->setData(Qt::BackgroundRole, QVariant(statusColor));
+        statusItem->setData(Qt::UserRole, static_cast<int>(glyphForColor(statusColor)));
 
         tableWidget->setItem(row, 0, statusItem);
 
@@ -1049,7 +1054,7 @@ void MainWindow::addSCSIErrorCounterLogTable(const QJsonObject &scsiErrorLog)
     }
 
     tableWidget->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    tableWidget->verticalHeader()->setDefaultSectionSize(31);
+    tableWidget->verticalHeader()->setDefaultSectionSize(24);
     tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
 }
 
@@ -1127,6 +1132,7 @@ void MainWindow::addNvmeLogTable(const QVector<QPair<QString, int>>& nvmeLogOrde
 
         QTableWidgetItem *statusItem = new QTableWidgetItem();
         statusItem->setData(Qt::BackgroundRole, QVariant(statusColor));
+        statusItem->setData(Qt::UserRole, static_cast<int>(glyphForColor(statusColor)));
 
         QTableWidgetItem *idItem = new QTableWidgetItem(id);
         idItem->setTextAlignment(Qt::AlignCenter);
@@ -1152,7 +1158,7 @@ void MainWindow::addNvmeLogTable(const QVector<QPair<QString, int>>& nvmeLogOrde
     }
 
     tableWidget->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    tableWidget->verticalHeader()->setDefaultSectionSize(31);
+    tableWidget->verticalHeader()->setDefaultSectionSize(24);
     tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
 
     if (!warningMessage.isEmpty()) {
@@ -1217,6 +1223,7 @@ void MainWindow::addSmartAttributesTable(const QJsonArray &attributes)
 
         QTableWidgetItem *statusItem = new QTableWidgetItem();
         statusItem->setData(Qt::BackgroundRole, QVariant(statusColor));
+        statusItem->setData(Qt::UserRole, static_cast<int>(glyphForColor(statusColor)));
 
         QTableWidgetItem *idItem = new QTableWidgetItem(id);
         idItem->setTextAlignment(Qt::AlignCenter);
@@ -1259,7 +1266,7 @@ void MainWindow::addSmartAttributesTable(const QJsonArray &attributes)
     }
 
     tableWidget->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    tableWidget->verticalHeader()->setDefaultSectionSize(31);
+    tableWidget->verticalHeader()->setDefaultSectionSize(24);
     tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
 }
 
@@ -1318,6 +1325,88 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
     } else if (event->button() == Qt::BackButton && prevButton->isEnabled()) {
         onPrevButtonClicked();
     }
+}
+
+// CrystalDiskInfo draws every status as a glossy coloured ball, so the same
+// mark has to follow the status through the health box, the drive tabs and the
+// S.M.A.R.T. tables.
+StatusGlyph MainWindow::glyphForHealth(const QString &health) const
+{
+    if (health == tr("Bad")) {
+        return StatusGlyph::Cross;
+    }
+    if (health == tr("Caution")) {
+        return StatusGlyph::Exclamation;
+    }
+    if (health == tr("Good")) {
+        return StatusGlyph::Check;
+    }
+    return StatusGlyph::None;
+}
+
+StatusGlyph MainWindow::glyphForColor(const QColor &statusColor) const
+{
+    if (statusColor == badColor) {
+        return StatusGlyph::Cross;
+    }
+    if (statusColor == cautionColor) {
+        return StatusGlyph::Exclamation;
+    }
+    if (statusColor == goodColor) {
+        return StatusGlyph::Check;
+    }
+    return StatusGlyph::None;
+}
+
+// CrystalDiskInfo labels a drive tab with the letters of its mounted volumes and
+// falls back to "Disk N" when nothing is mounted. Use the device node instead,
+// and keep the long IORegistry paths of macOS out of the tab strip.
+QString MainWindow::shortDeviceName(const QString &deviceName, int index) const
+{
+    if (deviceName.startsWith(QStringLiteral("IOService:"))) {
+        return tr("Disk") + QLatin1Char(' ') + QString::number(index + 1);
+    }
+
+    const QString fileName = deviceName.section(QLatin1Char('/'), -1);
+    return fileName.isEmpty() ? deviceName : fileName;
+}
+
+void MainWindow::applyCrystalDiskInfoStyle()
+{
+    // The content area of CrystalDiskInfo is white, the drive tabs sit on a
+    // light grey strip and the drive arrows are small grey buttons.
+    QPalette windowPalette = ui->centralwidget->palette();
+    windowPalette.setColor(QPalette::Window, QColor(0xFF, 0xFF, 0xFF));
+    ui->centralwidget->setAutoFillBackground(true);
+    ui->centralwidget->setPalette(windowPalette);
+
+    QPalette stripPalette = ui->scrollArea->palette();
+    stripPalette.setColor(QPalette::Window, QColor(0xEC, 0xEC, 0xEC));
+    ui->scrollArea->setAutoFillBackground(true);
+    ui->scrollArea->setPalette(stripPalette);
+    ui->scrollAreaWidgetContents->setAutoFillBackground(true);
+    ui->scrollAreaWidgetContents->setPalette(stripPalette);
+    ui->scrollArea->setStyleSheet(QStringLiteral("QScrollArea { border: 0px; border-bottom: 1px solid #C6C6C6; }"));
+
+    const QString navigationButtonStyle = QStringLiteral(
+        "QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F7F7F7, stop:1 #DCDCDC);"
+        " border: 1px solid #A8A8A8; border-radius: 3px; min-width: 22px; min-height: 22px; padding: 2px; }"
+        "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FFFFFF, stop:1 #E6E6E6); }"
+        "QPushButton:disabled { background: #F1F1F1; border-color: #CFCFCF; }");
+    nextButton->setStyleSheet(navigationButtonStyle);
+    prevButton->setStyleSheet(navigationButtonStyle);
+
+    QPalette tablePalette = tableWidget->palette();
+    tablePalette.setColor(QPalette::Text, QColor(0x20, 0x20, 0x20));
+    tableWidget->setPalette(tablePalette);
+    tableWidget->setAlternatingRowColors(true);
+    tableWidget->setShowGrid(true);
+    tableWidget->setStyleSheet(QStringLiteral(
+        "QTableWidget { background-color: #FFFFFF; alternate-background-color: #F8F8F8;"
+        " gridline-color: #D8D8D8; border: 1px solid #C8C8C8; }"
+        "QHeaderView::section { background-color: #F0F0F0; border: 0px; border-right: 1px solid #D8D8D8;"
+        " border-bottom: 1px solid #D8D8D8; padding: 4px 6px; font-weight: bold; }"
+        "QTableCornerButton::section { background-color: #F0F0F0; border: 0px; }"));
 }
 
 // Slots
